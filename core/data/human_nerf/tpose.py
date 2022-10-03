@@ -21,7 +21,9 @@ from configs import cfg
 class Dataset(torch.utils.data.Dataset):
     RENDER_SIZE=512
     CAM_PARAMS = {
-        'radius': 6.0, 'focal': 1250.
+        'radius': 6.0, 'focal': 1250. 
+        # 'radius': 12.0, 'focal': 1250. # radius control near far (distance, human size)
+
     }
 
     def __init__(
@@ -35,6 +37,17 @@ class Dataset(torch.utils.data.Dataset):
 
         self.dataset_path = dataset_path
         self.image_dir = os.path.join(dataset_path, 'images')
+        
+        #####################################################################################################################
+        self.novel_poses_path = os.path.join(dataset_path, 'novel_poses')
+        self.novel_poses_path = os.path.join(self.novel_poses_path, 'novel_poses.npy')
+        if os.path.exists(self.novel_poses_path):
+            print('novel_poses found!')
+            self.novel_poses = np.load(self.novel_poses_path)
+            print('novel_poses loaded successfully')
+        else: print(self.novel_poses_path, 'not found')
+
+        #####################################################################################################################
 
         self.canonical_joints, self.canonical_bbox = \
             self.load_canonical_joints()
@@ -47,7 +60,12 @@ class Dataset(torch.utils.data.Dataset):
                     self.canonical_bbox['max_xyz'],
                     grid_size=cfg.mweight_volume.volume_size).astype('float32')
 
-        self.total_frames = cfg.render_frames
+        ############################################################################
+        # total frames == input frames
+        # self.total_frames = cfg.render_frames
+        self.total_frames = len(self.novel_poses)
+        ############################################################################
+        
         print(f' -- Total Frames: {self.total_frames}')
 
         self.img_size = self.RENDER_SIZE
@@ -70,10 +88,10 @@ class Dataset(torch.utils.data.Dataset):
         campos = np.array([x, y, z], dtype='float32')
         camrot = get_camrot(campos, 
                             lookat=np.array([0, y, 0.]),
-                            inv_camera=True)
-
+                            # inv_camera=True)
+                            inv_camera=False)  ############################ avoid up-side down
         E = np.eye(4, dtype='float32')
-        E[:3, :3] = camrot
+        E[:3, :3] = camrot   # if cancel this line, the human will be upside down (but deleting it work for ROMP output?)
         E[:3, 3] = -camrot.dot(campos)
 
         K = np.eye(3, dtype='float32')
@@ -138,11 +156,47 @@ class Dataset(torch.utils.data.Dataset):
         # load t-pose
         dst_bbox = self.canonical_bbox.copy()
         dst_poses = np.zeros(72, dtype='float32')
+        
+        # dst_poses[16*3+2] =  1.0 # Left shoulder  rotate +1/pi*180 = +57 deg
+        # dst_poses[17*3+2] = -1.0 # right shoulder rotate -1/pi*180 = -57 deg
+        
+        # dst_poses[16*3+2] =  (30 + 60 * idx / self.total_frames) * (np.pi / 180.) # Left shoulder  rotate +1/pi*180 = +57 deg
+        # dst_poses[17*3+2] = -(30 + 60 * idx / self.total_frames) * (np.pi / 180.) # right shoulder rotate -1/pi*180 = -57 deg
+        
+        # arms shake
+        # dst_poses[16*3+2] =  60 * np.sin((360 * 3) * (idx / self.total_frames) * (np.pi / 180.)) * (np.pi / 180.) # Left shoulder  rotate +1/pi*180 = +57 deg
+        # dst_poses[17*3+2] = -60 * np.sin((360 * 5) * (idx / self.total_frames) * (np.pi / 180.)) * (np.pi / 180.) # right shoulder rotate -1/pi*180 = -57 deg
+        #--------------------------------------------------------------------------------------------------------------------------------#
+        # dst_poses[1*3+2] = 1.0; # left hip rotate
+        # dst_poses[2*3+1] = 1.0; # roll?nei ba
+
+        # walk
+        # dst_poses[1*3+0] = 30 * np.sin((360 * 3) * (idx / self.total_frames) * (np.pi / 180.)) * (np.pi / 180.)
+        # dst_poses[2*3+0] = -30 * np.sin((360 * 3) * (idx / self.total_frames) * (np.pi / 180.)) * (np.pi / 180.)
+        
+        
+        
+        ####################################generate novel poses by ROMP####################################################
+        dst_poses = self.get_novel_poses_from_ROMP_output(idx)
+        
+        
+        ####################################################################################################################
+        
+        
+        
+        
+        
         dst_skel_joints = self.canonical_joints.copy()
 
         # rotate body
-        angle = 2 * np.pi / self.total_frames * idx
+        # angle = 2 * np.pi / self.total_frames * idx
+        # angle = 0   # if zero, still without body rotation
+        # angle = 45 * np.pi / 180.
+        angle = 180 * np.pi / 180.
+        
         add_rmtx = cv2.Rodrigues(np.array([0, -angle, 0], dtype='float32'))[0]
+        # add_rmtx = cv2.Rodrigues(np.array([np.pi, -angle, 0], dtype='float32'))[0]  # have no legs
+        # add_rmtx = cv2.Rodrigues(np.array([0, -angle, np.pi], dtype='float32'))[0]  # have no legs
         root_rmtx = cv2.Rodrigues(dst_poses[:3])[0]
         new_root_rmtx = add_rmtx@root_rmtx
         dst_poses[:3] = cv2.Rodrigues(new_root_rmtx)[0][:, 0]
@@ -212,3 +266,13 @@ class Dataset(torch.utils.data.Dataset):
             })
         
         return results
+
+    
+    ######################################################################################################################################
+    def get_novel_poses_from_ROMP_output(self, idx):
+        ratio = 1. * idx / self.total_frames
+        n_novel_poses = len(self.novel_poses)
+        return_idx = int(ratio * n_novel_poses)
+        # self.novel_poses[return_idx][0] += 180 * np.pi / 180.0
+        return self.novel_poses[return_idx]
+    ######################################################################################################################################
