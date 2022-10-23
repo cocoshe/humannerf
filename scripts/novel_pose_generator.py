@@ -20,15 +20,12 @@ import numpy as np
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-p', '--path', type=str, default='./video_results.npz')
-parser.add_argument('-o', '--output', type=str, default='./novel_poses.npy')
+parser.add_argument('-p', '--path', type=str, default='../dataset/wild/monocular/video_results.npz')
+parser.add_argument('-o', '--output', type=str, default='../dataset/wild/monocular/novel_poses/novel_poses.npy')
 
 args = parser.parse_args(sys.argv[1:])
 
 npz_path = args.path
-# if os.path.exists('video_results.npz'):
-#     print('find video_results.npz')
-# else: print('please input the ')
 if os.path.exists(npz_path):
     print('find video_results.npz in ', npz_path)
 else:
@@ -36,10 +33,8 @@ else:
 
 
 
-# data = np.load('video_results (1).npz', allow_pickle=True)  # kun part1
-# data = np.load('video_results (2).npz', allow_pickle=True)  # girl dance20s
-# data = np.load('video_results (3).npz', allow_pickle=True)  # smooth kun part1
-data = np.load('video_results (4).npz', allow_pickle=True)  # aini_all
+
+data = np.load(npz_path., allow_pickle=True)
 data_dict = data['results'][()]
 # print(data['results']())
 pose_output = []
