@@ -21,7 +21,7 @@ import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-p', '--path', type=str, default='../dataset/wild/monocular/video_results.npz')
-parser.add_argument('-o', '--output', type=str, default='../dataset/wild/monocular/novel_poses/novel_poses.npy')
+parser.add_argument('-o', '--output', type=str, default='../dataset/wild/monocular/novel_poses')
 
 args = parser.parse_args(sys.argv[1:])
 
@@ -34,7 +34,7 @@ else:
 
 
 
-data = np.load(npz_path., allow_pickle=True)
+data = np.load(npz_path, allow_pickle=True)
 data_dict = data['results'][()]
 # print(data['results']())
 pose_output = []
@@ -46,8 +46,11 @@ for i, (k, v) in enumerate(data_dict.items()):
     pose_output.append(np.concatenate([v['global_orient'][0], v['body_pose'][0]], axis=0))
 
 # np.save('novel_poses.npy', pose_output)
-np.save(args.output, pose_output)
-print('save novel_poses.npy in ', args.output)
+if not os.path.exists(args.output):
+    os.mkdir(args.output)
+save_path = os.path.join(args.output, 'novel_poses.npy')
+np.save(save_path, pose_output)
+print('save novel_poses.npy in ', save_path)
 
 # novel = np.load('novel_poses.npy')
 # print(novel.shape)
